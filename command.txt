@@ -1,0 +1,13 @@
+display version
+display device
+display interface brief
+display ip interface brief
+display current-configuration
+display bgp peer
+display ospf peer
+display isis peer
+display ip routing-table
+display mac-address
+display arp
+display cpu-usage
+display memory-usage
