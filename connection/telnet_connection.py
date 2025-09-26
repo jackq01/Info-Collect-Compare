@@ -24,8 +24,8 @@ class TelnetConnection:
         self.prompt_pattern_bytes: Optional[Pattern] = None      # bytes 正则（高性能）
 
         # 连接参数
-        self.connect_timeout = 30
-        self.max_retries = 3
+        self.connect_timeout = 10
+        self.max_retries = 1
         self.read_timeout = 2.0
         self.command_timeout = 300
         self.large_command_timeout = 600
@@ -66,6 +66,13 @@ class TelnetConnection:
                     
                     logger.info(f"Telnet连接成功: {self.ip}:{self.port}")
                     return True
+                else:
+                    logger.error(f"Telnet登录失败：未检测到登录/密码提示或认证失败，可能端口错误或该端口非Telnet服务。目标 {self.ip}:{self.port}")
+                    # 结束连接，避免陷入无限循环
+                    self._cleanup_connection()
+                    # 计一次重试并跳出当前循环（避免无休止尝试）
+                    retry_count += 1
+                    break
                     
             except (socket.timeout, ConnectionRefusedError, OSError) as e:
                 retry_count += 1
@@ -85,11 +92,14 @@ class TelnetConnection:
     
     def _perform_login(self) -> bool:
         """执行完整的登录流程"""
+        if not self.tn:
+            logger.error("Telnet对象未初始化，无法执行登录")
+            return False
         try:
             # 读取欢迎信息并等待登录提示
             login_prompt = self._wait_for_patterns(self.login_patterns, timeout=10)
             if not login_prompt:
-                logger.error("未找到登录提示")
+                logger.error(f"未找到登录提示（等待 10s 超时）。目标 {self.ip}:{self.port} 可能不是Telnet服务或端口错误")
                 return False
                 
             # 发送用户名
@@ -99,7 +109,7 @@ class TelnetConnection:
             # 等待密码提示
             password_prompt = self._wait_for_patterns(self.password_patterns, timeout=10)
             if not password_prompt:
-                logger.error("未找到密码提示")
+                logger.error(f"未找到密码提示（等待 10s 超时）。请检查登录流程与设备提示是否符合预期，目标 {self.ip}:{self.port}")
                 return False
                 
             # 发送密码
@@ -115,6 +125,8 @@ class TelnetConnection:
     
     def _wait_for_patterns(self, patterns: List[bytes], timeout: int = 10) -> Optional[bytes]:
         """等待匹配指定的模式（字节级）"""
+        if not self.tn:
+            return None
         try:
             data = b''
             start_time = time.time()
@@ -138,13 +150,17 @@ class TelnetConnection:
     
     def _verify_login(self) -> bool:
         """验证登录是否成功（字节级）"""
+        tn = self.tn
+        if not tn:
+            logger.error("Telnet对象未初始化，无法验证登录")
+            return False
         try:
             start_time = time.time()
             login_data = b''
             
             while time.time() - start_time < 15:
                 try:
-                    chunk = self.tn.read_very_eager()
+                    chunk = tn.read_very_eager()
                     if chunk:
                         login_data += chunk
                         # 错误信息判定（小写以覆盖）
@@ -161,7 +177,7 @@ class TelnetConnection:
             
             # 最终检查一次
             try:
-                final_check = self.tn.read_very_eager()
+                final_check = tn.read_very_eager()
                 login_data += final_check
             except:
                 pass
@@ -177,6 +193,8 @@ class TelnetConnection:
     
     def _setup_terminal(self):
         """设置终端参数（禁用分页/增宽）"""
+        if not self.tn:
+            return
         terminal_commands = [
             "terminal length 0",
             "screen-length 0",
@@ -206,6 +224,8 @@ class TelnetConnection:
     
     def _detect_prompt_pattern(self):
         """检测命令提示符模式（构建 str/bytes 双正则）"""
+        if not self.tn:
+            return
         try:
             # 发送空命令获取提示符
             self.tn.write(b'\n')
@@ -275,6 +295,8 @@ class TelnetConnection:
     
     def _read_output(self, timeout: int, is_large: bool = False) -> str:
         """读取命令输出（高吞吐、低开销、超大回显）"""
+        if not self.tn:
+            return "Telnet连接未建立"
         import select
 
         buf = bytearray()
@@ -391,11 +413,14 @@ class TelnetConnection:
     
     def _is_command_complete(self) -> bool:
         """检查命令是否完成（保守判断，作为回退）"""
+        tn = self.tn
+        if not tn:
+            return False
         try:
             # 不主动注入字符，只尝试读取残留
             residual = b''
             try:
-                residual = self.tn.read_very_eager()
+                residual = tn.read_very_eager()
             except Exception:
                 residual = b''
             if residual:

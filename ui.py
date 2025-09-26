@@ -24,7 +24,7 @@ class NetworkCutoverTool(QMainWindow):
         
     def init_ui(self):
         """初始化UI界面"""
-        self.setWindowTitle("网络变更信息采集工具")
+        self.setWindowTitle("信息采集对比工具v1.0")
         self.resize(1400, 900)
         self.center_on_screen()
         
@@ -90,16 +90,19 @@ class NetworkCutoverTool(QMainWindow):
         device_layout.addLayout(protocol_layout, 0, 0, 1, 2)
         
         device_layout.addWidget(QLabel("IP地址:"), 1, 0)
-        # self.ip_input = QLineEdit("192.168.56.10")
+        self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("192.168.1.1 或 192.168.1.1:2222")
+    
         device_layout.addWidget(self.ip_input, 1, 1)
         
         device_layout.addWidget(QLabel("用户名:"), 2, 0)
-        # self.user_input = QLineEdit("admin")
+        self.user_input = QLineEdit()
+        self.user_input.setPlaceholderText("用户名")
         device_layout.addWidget(self.user_input, 2, 1)
         
         device_layout.addWidget(QLabel("密   码:"), 3, 0)
-        # self.pass_input = QLineEdit("admin")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("密码")
         self.pass_input.setEchoMode(QLineEdit.Password)
         device_layout.addWidget(self.pass_input, 3, 1)
         
@@ -315,8 +318,8 @@ class NetworkCutoverTool(QMainWindow):
         # 获取选择的命令文件路径
         command_file = self.command_file_input.text().strip()
         commands, error = self.get_commands_from_file(command_file)
-        if error:
-            self.show_styled_message_box(QMessageBox.Warning, "警告", error)
+        if error or not commands:
+            self.show_styled_message_box(QMessageBox.Warning, "警告", error or "文件中没有有效命令")
             return
         
         mode = "变更前" if self.mode_before.isChecked() else "变更后"
@@ -366,8 +369,8 @@ class NetworkCutoverTool(QMainWindow):
         """处理采集过程中的错误"""
         self.start_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.log_message(f"错误: {error_message}")
-        self.show_styled_message_box(QMessageBox.Critical, "错误", error_message)
+        self.log_message(f"错误: {error_message} 连接失败!")
+        self.show_styled_message_box(QMessageBox.Information, "错误", f"{error_message} 连接失败，请检查配置参数!")
     
     def refresh_file_list(self, list_widget, files):
         """刷新文件列表"""
@@ -375,12 +378,12 @@ class NetworkCutoverTool(QMainWindow):
         for filepath in files:
             filename = os.path.basename(filepath)
             item = QListWidgetItem(filename)
-            item.setData(Qt.UserRole, filepath)
+            item.setData(256, filepath)
             list_widget.addItem(item)
     
     def view_file(self, item):
         """查看文件内容"""
-        filepath = item.data(Qt.UserRole)
+        filepath = item.data(256)
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -405,17 +408,19 @@ class NetworkCutoverTool(QMainWindow):
         if not before_item and self.before_list.count() == 1:
             before_item = self.before_list.item(0)
             self.before_list.setCurrentItem(before_item)
-            self.log_message(f"自动选择变更前唯一文件: {before_item.text()}")
+            if before_item is not None:
+                self.log_message(f"自动选择变更前唯一文件: {before_item.text()}")
         if not after_item and self.after_list.count() == 1:
             after_item = self.after_list.item(0)
             self.after_list.setCurrentItem(after_item)
-            self.log_message(f"自动选择变更后唯一文件: {after_item.text()}")
+            if after_item is not None:
+                self.log_message(f"自动选择变更后唯一文件: {after_item.text()}")
 
         if not before_item or not after_item:
             self.show_styled_message_box(QMessageBox.Warning, "警告", "请在“变更前”和“变更后”文件列表中各选择一个文件进行比对。")
             return
 
-        before_file = before_item.data(Qt.UserRole)
+        before_file = before_item.data(256)
         after_file = after_item.data(Qt.UserRole)
         
         bc_path = self._get_bc_path()
