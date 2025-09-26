@@ -15,6 +15,7 @@
 
 ![alt text](采集界面.png)
 ![alt text](比对界面.png)
+
 ## 目录结构
 
 - main.py — 应用入口（创建 QApplication，启动主窗体）
